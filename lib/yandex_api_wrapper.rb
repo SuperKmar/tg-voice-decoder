@@ -22,15 +22,17 @@ class YandexApiWrapper
 
   attr_reader :token, :expires_at
 
-  def initialize(yandex_token, folder_id)
+  def initialize(yandex_token, folder_id, logger)
     @available = false
     @folder_id = folder_id
-    fill_token(yandex_token)
-    @available = true
+    @oauth_token = yandex_token
+    @logger = logger
+    fill_token(@oauth_token)
+    @available = test_token
   end
 
   def valid?
-    Time.now < @expires_at
+    (Time.now < @expires_at) && @available
   end
 
   def invalid?
@@ -60,27 +62,35 @@ class YandexApiWrapper
     response.status == 200
   end
 
-  def speech_to_text(file)
+  def update_token
+    fill_token(@oauth_token)
+    @available = test_token
+  end
+
+  def speech_to_text(file) # rubocop:disable Metrics/AbcSize
     conn = speech_to_text_connection
     response = conn.post(SPEECH_TO_TEXT_PATH, file)
 
     case response.status
     when 200
-      JSON.parse(response.body)['result']
-      # TODO: add logging
-
+      text = JSON.parse(response.body)['result']
+      @logger.info("Transcribed at: #{Time.now}, text: #{text}")
+      text
     when 401
       # this happens due to free clouds not actually working
       if response.body.include? 'The cloud'
         @available = false
+        @logger.fatal('Yandex cloud is out of money - speech-to-text service is no longer available')
         raise CloudUnavailable
+      else
+        @logger.fatal('Bad folder ID - check launch params')
+        raise Unauthorized, "#{response.status}: #{response.body}"
       end
-
-      raise Unauthorized, "#{response.status}: #{response.body}"
     when 429
-      # TODO: too many requests
+      @logger.warn('Yandex request limit reached!')
+      'Too many requests - try again later'
     else
-      # TODO: add logging
+      @logger.fatal("Unproccessed error: #{response.status} - #{response.body}")
       raise UnexpectedError, "#{response.status}: #{response.body}"
     end
   end
@@ -98,7 +108,6 @@ class YandexApiWrapper
       @token = body['iamToken']
       @expires_at = Time.strptime(body['expiresAt'], '%FT%T')
     when 401
-      # bad token
       raise BadOAuthToken
     else
       raise UnexpectedError, "#{response.status}: #{response.body}"

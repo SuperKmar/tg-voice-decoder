@@ -1,0 +1,4 @@
+Send a voice message to this telegram bot.
+I will transcribe it into text using Yandex Speechkit.
+
+Maximum length of 30s

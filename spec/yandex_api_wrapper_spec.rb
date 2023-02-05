@@ -6,7 +6,7 @@ require 'yandex_api_wrapper'
 require 'timecop'
 
 describe YandexApiWrapper do
-  subject(:ya_wrapper) { described_class.new(oauth_token, folder_id) }
+  subject(:ya_wrapper) { described_class.new(oauth_token, folder_id, Logger.new($stdout)) }
 
   let(:folder_id) { 'b1gkh904kt4q1hmo83eh' }
   let(:oauth_token) { File.read('.yandex_token').chomp }
